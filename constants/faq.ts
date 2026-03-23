@@ -1,0 +1,10 @@
+export const faqs = [
+  { q: "How does the AI review know about my codebase?", a: "Each review includes the full diff with file names and surrounding context. AI understands the purpose of each change based on the PR title, description, and adjacent code — not just isolated lines." },
+  { q: "Will my code be stored or used for training?", a: "No. Your code is processed transiently during review generation and is never stored. We do not use your code to train any models. The review result is saved, but not the raw source code." },
+  { q: "What languages does it support?", a: "Any language GitHub supports — TypeScript, Python, Go, Rust, Java, Ruby, PHP, and more. The AI adapts its feedback to the idioms and conventions of each language." },
+  { q: "How long does a review take?", a: "The median review time is ~28 seconds from PR open to GitHub comment posted. This includes fetching the diff, generating the review via AI, and posting the comment. Large diffs may take up to 90 seconds." },
+  { q: "Can I customize what the review focuses on?", a: "On the Team plan you can define custom review rules — enforce naming conventions, ban specific patterns, or focus on security-critical files. This is on the roadmap for Pro as well." },
+  { q: "What if the review fails?", a: "Inngest handles retry logic automatically — up to 3 retries with exponential backoff. If all retries fail, a failure comment is posted on the PR and you can trigger a re-review from your dashboard." },
+  { q: "Does it work with private repositories?", a: "Yes. The GitHub OAuth scope includes private repos. Your token is stored encrypted and scoped only to the repositories you explicitly connect." },
+  { q: "Can I cancel anytime?", a: "Yes. Cancel from your billing settings at any time. You keep access until the end of your billing period. No long-term contracts." },
+];

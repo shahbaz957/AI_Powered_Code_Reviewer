@@ -8,15 +8,23 @@ import { AppPreviewSection }     from "@/components/sections/AppPreviewSection";
 import { PricingSection }        from "@/components/sections/PricingSection";
 import { FAQSection }            from "@/components/sections/FAQSection";
 import { CTASection, Footer }    from "@/components/sections/CTASection";
+import { auth } from "@/lib/auth";
+import { headers } from "next/headers"
+
+
 
 /**
  * Swap `isAuthenticated` to `true` when reading a real
  * BetterAuth session server-side. When true the navbar
  * shows "Dashboard" instead of "Home".
  */
-const isAuthenticated = false;
 
-export default function HomePage() {
+
+export default async function HomePage() {
+  const session = await auth.api.getSession({
+    headers: await headers(),
+  })
+  const isAuthenticated = !!session;
   return (
     <>
       <Navbar isAuthenticated={isAuthenticated} />
