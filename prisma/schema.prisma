@@ -1,0 +1,138 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ── BetterAuth tables ──
+
+model User {
+  id            String   @id
+  name          String
+  email         String   @unique
+  emailVerified Boolean
+  image         String?
+  createdAt     DateTime
+  updatedAt     DateTime
+
+  sessions     Session[]
+  accounts     Account[]
+  repos        Repo[]
+  usageRecords UsageRecord[]
+}
+
+model Session {
+  id        String   @id
+  expiresAt DateTime
+  token     String   @unique
+  createdAt DateTime
+  updatedAt DateTime
+  ipAddress String?
+  userAgent String?
+  userId    String
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Account {
+  id                    String    @id
+  accountId             String
+  providerId            String
+  userId                String
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime
+  updatedAt             DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Verification {
+  id         String    @id
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime?
+  updatedAt  DateTime?
+}
+
+// ── App tables ──
+
+model Repo {
+  id           String   @id @default(cuid())
+  userId       String
+  githubRepoId Int      @unique
+  name         String
+  fullName     String
+  ownerEmail   String?
+  webhookId    Int?
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  reviews       Review[]
+  usageRecords  UsageRecord[]
+  webhookEvents WebhookEvent[]
+}
+
+model Review {
+  id          String    @id @default(cuid())
+  repoId      String
+  prNumber    Int
+  prTitle     String
+  prUrl       String
+  prAuthor    String
+  severity    String
+  summary     String    @db.Text
+  status      String    @default("pending")
+  emailSent   Boolean   @default(false)
+  emailSentAt DateTime?
+  createdAt   DateTime  @default(now())
+
+  repo     Repo            @relation(fields: [repoId], references: [id], onDelete: Cascade)
+  comments ReviewComment[]
+}
+
+model ReviewComment {
+  id         String  @id @default(cuid())
+  reviewId   String
+  file       String
+  line       Int
+  type       String
+  message    String  @db.Text
+  suggestion String? @db.Text
+
+  review Review @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+}
+
+model UsageRecord {
+  id        String   @id @default(cuid())
+  userId    String
+  repoId    String?
+  reviewId  String?
+  createdAt DateTime @default(now())
+
+  user User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  repo Repo? @relation(fields: [repoId], references: [id])
+}
+
+model WebhookEvent {
+  id        String   @id @default(cuid())
+  repoId    String
+  prNumber  Int
+  action    String
+  payload   String   @db.Text
+  status    String   @default("received")
+  error     String?
+  createdAt DateTime @default(now())
+
+  repo Repo @relation(fields: [repoId], references: [id], onDelete: Cascade)
+}
