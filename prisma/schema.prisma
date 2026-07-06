@@ -81,6 +81,8 @@ model Repo {
   reviews       Review[]
   usageRecords  UsageRecord[]
   webhookEvents WebhookEvent[]
+
+  @@index([userId, isActive])
 }
 
 model Review {
@@ -99,6 +101,9 @@ model Review {
 
   repo     Repo            @relation(fields: [repoId], references: [id], onDelete: Cascade)
   comments ReviewComment[]
+
+  @@index([repoId, createdAt])
+  @@index([status])
 }
 
 model ReviewComment {
@@ -111,6 +116,9 @@ model ReviewComment {
   suggestion String? @db.Text
 
   review Review @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+
+  @@index([reviewId])
+  @@index([type])
 }
 
 model UsageRecord {
@@ -122,6 +130,8 @@ model UsageRecord {
 
   user User  @relation(fields: [userId], references: [id], onDelete: Cascade)
   repo Repo? @relation(fields: [repoId], references: [id])
+
+  @@index([userId, createdAt])
 }
 
 model WebhookEvent {
@@ -135,4 +145,7 @@ model WebhookEvent {
   createdAt DateTime @default(now())
 
   repo Repo @relation(fields: [repoId], references: [id], onDelete: Cascade)
+
+  @@index([repoId, createdAt])
+  @@index([status])
 }

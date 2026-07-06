@@ -24,10 +24,9 @@ export default async function HomePage() {
   const session = await auth.api.getSession({
     headers: await headers(),
   })
-  const isAuthenticated = !!session;
   return (
     <>
-      <Navbar isAuthenticated={isAuthenticated} />
+      <Navbar />
 
       <main>
         {/* 1. Hero — centered giant title + avatar stack */}
