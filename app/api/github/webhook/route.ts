@@ -91,7 +91,8 @@ export async function POST(req: NextRequest) {
 
   if (event !== "pull_request") {
     // Ping events, push events, etc. — just acknowledge
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true }); 
+    // acknowlege the event which will also prove that our server is running and ready to receive events
   }
 
   if (action !== "opened" && action !== "synchronize") {
@@ -180,6 +181,7 @@ export async function POST(req: NextRequest) {
   // TODO: Replace hardcoded 10 with dynamic limit based on user.plan
   // e.g. plan === "pro" ? Infinity : plan === "team" ? Infinity : 10
   const FREE_LIMIT = 10;
+  // so it means on free plan , user can only do 10 reviews per month
 
   if (usageThisMonth >= FREE_LIMIT) {
     console.log(`[Webhook] User ${repoRecord.userId} hit usage limit — skipping review`);

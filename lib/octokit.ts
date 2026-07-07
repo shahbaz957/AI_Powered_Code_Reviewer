@@ -13,5 +13,4 @@ export async function getOctokitForUser(userId : string){
         throw new Error("No Github Access Token is Found");
     }
     return new Octokit({auth : account.accessToken}); 
-    // here there is no need for ? mark because we have already checked above 
 }

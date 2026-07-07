@@ -4,6 +4,14 @@ const groq = new Groq({
   apiKey: process.env.GROQ_API_KEY!,
 });
 
+// Free-tier TPM limits (per model): scout=30k, 70b=12k, 8b=6k
+const DEFAULT_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct";
+const MODEL = process.env.GROQ_MODEL ?? DEFAULT_MODEL;
+
+// ~4 chars/token — keep input small enough for free-tier TPM caps
+const MAX_DIFF_CHARS = Number(process.env.GROQ_MAX_DIFF_CHARS ?? 18_000);
+const MAX_DIFF_LINES = Number(process.env.GROQ_MAX_DIFF_LINES ?? 400);
+
 // ── Types ──────────────────────────────────────────────────────────────────
 
 export interface ReviewComment {
@@ -23,88 +31,100 @@ export interface AIReview {
 // ── Prompt ─────────────────────────────────────────────────────────────────
 
 function buildPrompt(prTitle: string, prAuthor: string, diff: string): string {
-  return `You are a senior software engineer doing a code review.
+  return `Review this PR diff. Return ONLY raw JSON (no markdown).
 
-PR Title: ${prTitle}
-PR Author: ${prAuthor}
+PR: ${prTitle} by ${prAuthor}
 
 Diff:
 ${diff}
 
-Analyze this diff and return ONLY a valid JSON object. No markdown, no explanation, no backticks. Just the raw JSON.
+JSON shape:
+{"summary":"2-3 sentences","severity":"clean|low|medium|high|critical","comments":[{"file":"path","line":42,"type":"security|perf|style|logic","message":"issue","suggestion":"fix"}]}
 
-Use this exact structure:
-{
-  "summary": "2-3 sentences describing what the PR does and overall code quality",
-  "severity": "clean|low|medium|high|critical",
-  "comments": [
-    {
-      "file": "path/to/file.ts",
-      "line": 42,
-      "type": "security|perf|style|logic",
-      "message": "Clear description of the issue",
-      "suggestion": "How to fix it"
-    }
-  ]
-}
-
-Severity rules — pick exactly one:
-- clean    → no issues found
-- low      → only minor style or naming issues
-- medium   → logic issues, no security risk
-- high     → security vulnerability or major performance issue
-- critical → SQL injection, exposed secrets, auth bypass, data leak
-
-Comment type rules:
-- security → vulnerabilities, exposed keys, injection risks
-- perf     → unnecessary loops, unindexed queries, memory leaks
-- style    → naming, formatting, dead code
-- logic    → wrong conditions, missing edge cases, incorrect behavior
-
-Only comment on real issues. If the code is clean return an empty comments array.
-Max 10 comments. Focus on the most important ones.`;
+Rules: severity=clean if no issues (empty comments). Max 8 comments. Real issues only.`;
 }
 
 // ── Diff truncation ─────────────────────────────────────────────────────────
 
-function truncateDiff(diff: string, maxLines = 800): string {
+function truncateDiff(
+  diff: string,
+  maxLines = MAX_DIFF_LINES,
+  maxChars = MAX_DIFF_CHARS,
+): string {
+  let result = diff;
   const lines = diff.split("\n");
 
-  if (lines.length <= maxLines) return diff;
+  if (lines.length > maxLines) {
+    result = lines.slice(0, maxLines).join("\n");
+    result += `\n\n[Truncated: ${lines.length - maxLines} more lines not shown.]`;
+  }
 
-  const truncated = lines.slice(0, maxLines).join("\n");
-  return (
-    truncated +
-    `\n\n[Diff truncated — ${lines.length - maxLines} lines not shown. Review covers the first ${maxLines} lines only.]`
-  );
+  if (result.length > maxChars) {
+    result =
+      result.slice(0, maxChars) +
+      `\n\n[Truncated: diff exceeded ${maxChars} chars.]`;
+  }
+
+  return result;
 }
 
 // ── Main function ───────────────────────────────────────────────────────────
+
+async function callGroq(prompt: string) {
+  return groq.chat.completions.create({
+    model: MODEL,
+    temperature: 0.2,
+    max_tokens: 1536,
+    messages: [
+      {
+        role: "system",
+        content: "Code review assistant. Respond with valid JSON only.",
+      },
+      { role: "user", content: prompt },
+    ],
+  });
+}
 
 export async function generateReview(
   prTitle: string,
   prAuthor: string,
   diff: string,
 ): Promise<AIReview> {
-  const truncatedDiff = truncateDiff(diff);
-  const prompt = buildPrompt(prTitle, prAuthor, truncatedDiff);
+  // Try full truncation first; on 413 TPM limit, retry with half the diff
+  const attempts = [
+    { maxLines: MAX_DIFF_LINES, maxChars: MAX_DIFF_CHARS },
+    {
+      maxLines: Math.floor(MAX_DIFF_LINES / 2),
+      maxChars: Math.floor(MAX_DIFF_CHARS / 2),
+    },
+  ];
 
-  const response = await groq.chat.completions.create({
-    model: "llama-3.3-70b-versatile",
-    temperature: 0.2, // low temp = consistent structured output
-    max_tokens: 2048,
-    messages: [
-      {
-        role: "system",
-        content:
-          "You are a code review assistant. You always respond with valid JSON only. Never include markdown formatting or explanation outside the JSON.",
-      },
-      {
-        role: "user",
-        content: prompt,
-      },
-    ],
-  });
+  let response: Awaited<ReturnType<typeof callGroq>> | undefined;
+  let lastError: unknown;
+
+  for (const { maxLines, maxChars } of attempts) {
+    const prompt = buildPrompt(
+      prTitle,
+      prAuthor,
+      truncateDiff(diff, maxLines, maxChars),
+    );
+
+    try {
+      response = await callGroq(prompt);
+      break;
+    } catch (err: unknown) {
+      lastError = err;
+      const status =
+        err && typeof err === "object" && "status" in err
+          ? (err as { status: number }).status
+          : 0;
+      if (status !== 413) throw err;
+    }
+  }
+
+  if (!response) {
+    throw lastError ?? new Error("Groq request failed after retries");
+  }
 
   const raw = response.choices[0]?.message?.content ?? "";
 

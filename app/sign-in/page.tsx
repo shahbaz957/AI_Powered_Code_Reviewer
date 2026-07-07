@@ -2,16 +2,20 @@
 
 import { authClient } from "@/lib/auth-client"
 import { GitPullRequest, Github } from "lucide-react"
-import { useRouter } from "next/navigation"
 
 export default function SignInPage() {
-  const router = useRouter()
-
   const handleSignIn = async () => {
-    await authClient.signIn.social({
-      provider: "github",
-      callbackURL: "/dashboard",
-    })
+    try {
+      await authClient.signIn.social({
+        provider: "github",
+        callbackURL: "/dashboard",
+      })
+    } catch (err) {
+      console.error("Sign-in failed:", err)
+      alert(
+        "Sign-in failed. Check that the dev server and database are running, and that your GitHub OAuth callback URL matches how you're accessing the app (localhost vs ngrok).",
+      )
+    }
   }
 
   return (

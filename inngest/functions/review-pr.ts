@@ -140,26 +140,26 @@ export const reviewPR = inngest.createFunction(
         aiReview.comments.length === 0
           ? "_No issues found — clean PR!_"
           : aiReview.comments
-              .map(
-                (
-                  c: {
-                    file: string;
-                    line: number;
-                    type: string;
-                    message: string;
-                    suggestion?: string | null;
-                  },
-                  i: number,
-                ) => {
-                  let block = `### ${i + 1}. ${typeEmoji[c.type] ?? c.type} — \`${c.file}\` line ${c.line}\n\n`;
-                  block += `${c.message}\n`;
-                  if (c.suggestion) {
-                    block += `\n**Suggested fix:**\n\`\`\`\n${c.suggestion}\n\`\`\``;
-                  }
-                  return block;
+            .map(
+              (
+                c: {
+                  file: string;
+                  line: number;
+                  type: string;
+                  message: string;
+                  suggestion?: string | null;
                 },
-              )
-              .join("\n\n---\n\n");
+                i: number,
+              ) => {
+                let block = `### ${i + 1}. ${typeEmoji[c.type] ?? c.type} — \`${c.file}\` line ${c.line}\n\n`;
+                block += `${c.message}\n`;
+                if (c.suggestion) {
+                  block += `\n**Suggested fix:**\n\`\`\`\n${c.suggestion}\n\`\`\``;
+                }
+                return block;
+              },
+            )
+            .join("\n\n---\n\n");
 
       const body = `## PRReview.ai — ${severityBadge[aiReview.severity] ?? aiReview.severity} severity
 
