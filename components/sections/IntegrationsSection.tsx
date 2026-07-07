@@ -130,11 +130,11 @@ export function IntegrationsSection() {
   const cx = `calc(50% - min(${Z / 2}px, 46vw))`; // left edge of diagram zone
 
   // Precomputed positions matching buildPositions fractions
-  const githubLeft   = `calc(50% - min(${Z/2}px, 46vw) + min(${Z * 0.06}px, 5.5vw))`;
+  const githubLeft   = `calc(45% - min(${Z/2}px, 46vw) + min(${Z * 0.06}px, 5.5vw))`;
 const prLeft       = `calc(50% - min(${Z/2}px, 46vw) + min(${Z * 0.40}px, 36.8vw) - 28px)`;
-const fetchLeft    = `calc(50% - min(${Z/2}px, 46vw) + min(${Z * 0.82}px, 75.4vw) - 10px)`;
-const aiLeft       = `calc(50% - min(${Z/2}px, 46vw) + min(${Z * 0.82}px, 75.4vw) - 10px)`;
-const commentLeft  = `calc(50% - min(${Z/2}px, 46vw) + min(${Z * 0.82}px, 75.4vw) - 10px)`;
+const fetchLeft    = `calc(48% - min(${Z/2}px, 46vw) + min(${Z * 0.82}px, 75.4vw) - 10px)`;
+const aiLeft       = `calc(48% - min(${Z/2}px, 46vw) + min(${Z * 0.82}px, 75.4vw) - 10px)`;
+const commentLeft  = `calc(48% - min(${Z/2}px, 46vw) + min(${Z * 0.82}px, 75.4vw) - 10px)`;
 const emailLeft    = `calc(50% - min(${Z/2}px, 46vw) + min(${Z * 0.52}px, 47.8vw) - 75px)`;
 
   return (
