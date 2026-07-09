@@ -120,7 +120,7 @@ export function Footer() {
             Built with{" "}
             <span className="text-green-400/70">Next.js</span>
             {" · "}
-            <span className="text-violet-400/70">Claude</span>
+            <span className="text-violet-400/70">Postgres</span>
             {" · "}
             <span className="text-cyan-400/70">Inngest</span>
           </p>
