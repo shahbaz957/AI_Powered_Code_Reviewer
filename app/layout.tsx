@@ -39,8 +39,9 @@ export const metadata: Metadata = {
   },
   robots: { index: true, follow: true },
   icons: {
-    icon: "/favicon.ico",
-    apple: "/apple-touch-icon.png",
+    icon: [{ url: "/pr_review.png", type: "image/png" }],
+    apple: [{ url: "/pr_review.png", type: "image/png" }],
+    shortcut: ["/pr_review.png"],
   },
 };
 
