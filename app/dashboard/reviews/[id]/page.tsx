@@ -1,8 +1,10 @@
 "use client";
 
-import { useState, useEffect, use } from "react";
+import { useState, useEffect, use, useCallback, useRef } from "react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
+import { usePolling } from "@/hooks/usePolling";
+import { isReviewInProgress } from "@/lib/review-status";
 import {
   ArrowLeft, GitPullRequest, User, Clock, FileCode,
   ShieldAlert, Zap, AlertTriangle, Info, CheckCircle2,
@@ -36,7 +38,6 @@ interface ReviewDetail {
   repo: {
     name:       string;
     fullName:   string;
-    ownerEmail: string | null;
   };
 }
 
@@ -67,24 +68,54 @@ export default function ReviewDetailPage({
   // Next.js 16: params is a Promise in client components — use React's use() to unwrap
   const { id } = use(params);
 
-  const [review,     setReview]     = useState<ReviewDetail | null>(null);
-  const [loading,    setLoading]    = useState(true);
-  const [activeTab,  setActiveTab]  = useState<"summary" | "issues">("summary");
-  const [notFound,   setNotFound]   = useState(false);
+  const [review, setReview] = useState<ReviewDetail | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [activeTab, setActiveTab] = useState<"summary" | "issues">("summary");
+  const [notFound, setNotFound] = useState(false);
+  const isMounted = useRef(true);
 
   useEffect(() => {
-    fetch(`/api/reviews/${id}`)
-      .then((r) => {
-        if (r.status === 404) { setNotFound(true); return null; }
+    isMounted.current = true;
+    return () => {
+      isMounted.current = false;
+    };
+  }, []);
+
+  const fetchReview = useCallback(
+    async (silent = false) => {
+      if (!silent) setLoading(true);
+      else setRefreshing(true);
+
+      try {
+        const r = await fetch(`/api/reviews/${id}`, { cache: "no-store" });
+        if (r.status === 404) {
+          if (isMounted.current) setNotFound(true);
+          return;
+        }
         if (!r.ok) throw new Error(`Failed: ${r.status}`);
-        return r.json();
-      })
-      .then((data) => {
-        if (data) setReview(data.review);
-      })
-      .catch((err) => console.error("Failed to fetch review:", err))
-      .finally(() => setLoading(false));
-  }, [id]);
+        const data = await r.json();
+        if (isMounted.current) setReview(data.review);
+      } catch (err) {
+        console.error("Failed to fetch review:", err);
+      } finally {
+        if (!isMounted.current) return;
+        if (!silent) setLoading(false);
+        setRefreshing(false);
+      }
+    },
+    [id],
+  );
+
+  useEffect(() => {
+    void fetchReview(false);
+  }, [fetchReview]);
+
+  usePolling(() => fetchReview(true), {
+    enabled: !!review && isReviewInProgress(review.status),
+    intervalMs: 3_000,
+    pauseWhenHidden: true,
+  });
 
   if (loading) {
     return (
@@ -140,6 +171,9 @@ export default function ReviewDetailPage({
                 : "bg-cyan-400/8 text-cyan-400 border border-cyan-400/15"
             )}>
               {review.status === "completed" ? "● Done" : "◎ Reviewing"}
+              {refreshing && review.status !== "completed" && (
+                <RefreshCw className="inline h-3 w-3 ml-1 animate-spin opacity-60" />
+              )}
             </span>
           </div>
 

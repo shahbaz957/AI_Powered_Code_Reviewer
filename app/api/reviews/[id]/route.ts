@@ -1,7 +1,8 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { auth } from "@/lib/auth";
 import { headers } from "next/headers";
 import { prisma } from "@/lib/prisma";
+import { privateJson } from "@/lib/api-response";
 
 // GET /api/reviews/[id]
 //
@@ -15,7 +16,7 @@ export async function GET(
   try {
     const session = await auth.api.getSession({ headers: await headers() });
     if (!session) {
-      return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+      return privateJson({ error: "Not authenticated" }, 401);
     }
 
     const { id } = await params;
@@ -41,24 +42,20 @@ export async function GET(
         },
         repo: {
           select: {
-            name:       true,
-            fullName:   true,
-            ownerEmail: true,
+            name:     true,
+            fullName: true,
           },
         },
       },
     });
 
     if (!review) {
-      return NextResponse.json({ error: "Review not found" }, { status: 404 });
+      return privateJson({ error: "Review not found" }, 404);
     }
 
-    return NextResponse.json({ review });
+    return privateJson({ review });
   } catch (error) {
     console.error("[/api/reviews/[id] GET]", error);
-    return NextResponse.json(
-      { error: "Failed to fetch review" },
-      { status: 500 }
-    );
+    return privateJson({ error: "Failed to fetch review" }, 500);
   }
 }

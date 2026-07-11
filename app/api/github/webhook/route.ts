@@ -16,6 +16,7 @@ import { inngest } from "@/inngest/client";
 // 3. Never trust the payload — always verify the HMAC signature first.
 
 export async function POST(req: NextRequest) {
+  try {
   // ── Step 1: Read raw body ────────────────────────────────────────────────
   // We need the raw bytes (not parsed JSON) to verify the HMAC signature.
   // If we parse JSON first, the signature check will fail because
@@ -69,18 +70,7 @@ export async function POST(req: NextRequest) {
 
   if (!isValid) {
     console.warn("[Webhook] Invalid signature — ignoring");
-    // STILL LOG TO DB so we can debug secret mismatches!
-    await prisma.webhookEvent.create({
-      data: {
-        repoId: "unknown",
-        prNumber: 0,
-        action: "unknown",
-        payload: rawBody,
-        status: "failed",
-        error: "invalid_signature",
-      },
-    });
-    return NextResponse.json({ ok: true }); // still 200!
+    return NextResponse.json({ ok: true });
   }
 
   // ── Step 3: Check event type ─────────────────────────────────────────────
@@ -116,16 +106,6 @@ export async function POST(req: NextRequest) {
   // Validate required fields exist
   if (!githubRepoId || !prNumber || !prTitle || !prUrl || !prAuthor) {
     console.warn("[Webhook] Missing required fields in payload — ignoring");
-    await prisma.webhookEvent.create({
-      data: {
-        repoId: "unknown",
-        prNumber: prNumber || 0,
-        action: action || "unknown",
-        payload: rawBody,
-        status: "failed",
-        error: "missing_fields",
-      },
-    });
     return NextResponse.json({ ok: true });
   }
 
@@ -149,18 +129,7 @@ export async function POST(req: NextRequest) {
   });
 
   if (!repoRecord) {
-    // Repo not connected in our system — ignore
     console.warn(`[Webhook] Repo ${githubRepoId} not found in DB`);
-    await prisma.webhookEvent.create({
-      data: {
-        repoId: `github_id_${githubRepoId}`,
-        prNumber,
-        action,
-        payload: rawBody,
-        status: "failed",
-        error: "repo_not_found_in_db",
-      },
-    });
     return NextResponse.json({ ok: true });
   }
 
@@ -214,26 +183,34 @@ export async function POST(req: NextRequest) {
   });
 
   // ── Step 8: Queue the Inngest job ────────────────────────────────────────
-  // We pass everything the pipeline needs upfront — no extra DB queries in Inngest.
-  // inngest.send() is non-blocking — returns immediately after queuing.
-  await inngest.send({
-    name: "pr/review.requested",
-    data: {
-      webhookEventId: webhookEvent.id,
-      repoId:         repoRecord.id,
-      userId:         repoRecord.userId,
-      owner:          payload.repository.owner.login,
-      repo:           payload.repository.name,
-      prNumber,
-      prTitle,
-      prAuthor,
-      prUrl,
-      ownerEmail:     repoRecord.ownerEmail ?? repoRecord.user.email ?? "",
-    },
-  });
+  try {
+    await inngest.send({
+      name: "pr/review.requested",
+      data: {
+        webhookEventId: webhookEvent.id,
+        repoId:         repoRecord.id,
+        userId:         repoRecord.userId,
+        owner:          payload.repository.owner.login,
+        repo:           payload.repository.name,
+        prNumber,
+        prTitle,
+        prAuthor,
+        prUrl,
+        ownerEmail:     repoRecord.ownerEmail ?? repoRecord.user.email ?? "",
+      },
+    });
+  } catch (err) {
+    console.error("[Webhook] Inngest send failed:", err);
+    await prisma.webhookEvent.update({
+      where: { id: webhookEvent.id },
+      data: { status: "failed", error: "inngest_send_failed" },
+    });
+    // Always 200 — GitHub disables webhooks on repeated non-2xx responses
+  }
 
-  // ── Step 9: Respond immediately ──────────────────────────────────────────
-  // GitHub expects a response within 10 seconds.
-  // We are already done here — Inngest runs everything else async.
   return NextResponse.json({ ok: true });
+  } catch (err) {
+    console.error("[Webhook] Unhandled error:", err);
+    return NextResponse.json({ ok: true });
+  }
 }

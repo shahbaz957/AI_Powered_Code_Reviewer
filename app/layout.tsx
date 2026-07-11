@@ -21,7 +21,7 @@ export const metadata: Metadata = {
     template: "%s · PRReview.ai",
   },
   description:
-    "Automated AI code reviews on every pull request. Powered by Claude, delivered as native GitHub comments in ~30 seconds.",
+    "Automated AI code reviews on every pull request. Powered by Groq, delivered as native GitHub comments in ~30 seconds.",
   metadataBase: new URL(
     process.env.NEXT_PUBLIC_APP_URL ?? "https://prreview.ai"
   ),
@@ -59,6 +59,7 @@ export default function RootLayout({
     <html
       lang="en"
       suppressHydrationWarning
+      data-scroll-behavior="smooth"
       className={`${inter.variable} ${jetbrainsMono.variable} dark`}
     >
       <body className="min-h-screen antialiased">

@@ -1,12 +1,14 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
+import { usePolling } from "@/hooks/usePolling";
+import { hasInProgressReviews } from "@/lib/review-status";
 import {
   GitPullRequest, ChevronDown, Search, Github, Plus, Star,
-  Lock, Globe, Zap, Clock, CheckCircle2, AlertTriangle,
-  RefreshCw, ChevronRight, ShieldAlert
+  Lock, Globe, Zap, CheckCircle2, AlertTriangle,
+  RefreshCw, ChevronRight,
 } from "lucide-react";
 
 // ── Types ─────────────────────────────────────────────────────────────────
@@ -79,7 +81,7 @@ function ConnectRepoDropdown({ onConnected }: { onConnected: () => void }) {
   useEffect(() => {
     if (!open) return;
     setLoading(true);
-    fetch("/api/repos/available")
+    fetch("/api/repos/available", { cache: "no-store" })
       .then((r) => r.json())
       .then((data) => setRepos(data.repos ?? []))
       .catch((err) => console.error("Failed to fetch repos:", err))
@@ -255,44 +257,124 @@ function ConnectRepoDropdown({ onConnected }: { onConnected: () => void }) {
 // ── Main Dashboard Page ────────────────────────────────────────────────────
 
 export default function DashboardPage() {
-  const [reviews,   setReviews]   = useState<Review[]>([]);
-  const [stats,     setStats]     = useState<UsageStats | null>(null);
-  const [loading,   setLoading]   = useState(true);
+  const [reviews, setReviews] = useState<Review[]>([]);
+  const [stats, setStats] = useState<UsageStats | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
+  const isMounted = useRef(true);
 
-  // Fetch both reviews and usage stats in parallel
   useEffect(() => {
-  setLoading(true);
-  Promise.all([
-    fetch("/api/reviews").then((r) => {
-      if (!r.ok) throw new Error(`/api/reviews failed: ${r.status}`);
-      return r.json();
-    }),
-    fetch("/api/usage").then((r) => {
-      if (!r.ok) throw new Error(`/api/usage failed: ${r.status}`);
-      return r.json();
-    }),
-  ])
-    .then(([reviewsData, usageData]) => {
+    isMounted.current = true;
+    return () => {
+      isMounted.current = false;
+    };
+  }, []);
+
+  const fetchDashboard = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
+    else setRefreshing(true);
+
+    try {
+      const [reviewsRes, usageRes] = await Promise.all([
+        fetch("/api/reviews", { cache: "no-store" }),
+        fetch("/api/usage", { cache: "no-store" }),
+      ]);
+
+      if (!reviewsRes.ok) throw new Error(`/api/reviews failed: ${reviewsRes.status}`);
+      if (!usageRes.ok) throw new Error(`/api/usage failed: ${usageRes.status}`);
+
+      const [reviewsData, usageData] = await Promise.all([
+        reviewsRes.json(),
+        usageRes.json(),
+      ]);
+
+      if (!isMounted.current) return;
+
       setReviews(reviewsData.reviews ?? []);
       setStats(usageData);
-    })
-    .catch((err) => console.error("Dashboard fetch error:", err))
-    .finally(() => setLoading(false));
-}, [refreshKey]); // re-fetch when refreshKey changes (after connecting a repo)
+      setLastUpdated(new Date());
+    } catch (err) {
+      console.error("Dashboard fetch error:", err);
+    } finally {
+      if (!isMounted.current) return;
+      if (!silent) setLoading(false);
+      setRefreshing(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void fetchDashboard(false);
+  }, [fetchDashboard, refreshKey]);
+
+  const inProgress = hasInProgressReviews(reviews);
+
+  usePolling(() => fetchDashboard(true), {
+    enabled: !loading && inProgress,
+    intervalMs: 4_000,
+    pauseWhenHidden: true,
+  });
+
+  usePolling(() => fetchDashboard(true), {
+    enabled: !loading && !inProgress,
+    intervalMs: 30_000,
+    pauseWhenHidden: true,
+  });
 
   const usagePct = stats
     ? stats.usageLimit === -1
       ? 0
-      : Math.round((stats.usageThisMonth / stats.usageLimit) * 100)
+      : Math.min(
+          100,
+          Math.round((stats.usageThisMonth / stats.usageLimit) * 100),
+        )
     : 0;
 
-  const STATS_CARDS = stats ? [
-    { label: "Reviews this month", value: String(stats.usageThisMonth),   sub: `of ${stats.usageLimit} free`,    icon: GitPullRequest, color: "text-green-400",  bg: "bg-green-400/10"  },
-    { label: "Issues detected",    value: String(stats.totalIssues),      sub: `${stats.securityIssues} security`, icon: AlertTriangle,  color: "text-amber-400", bg: "bg-amber-400/10"  },
-    { label: "Clean PRs",          value: `${stats.cleanRate}%`,          sub: "pass rate",                       icon: CheckCircle2,   color: "text-violet-400",bg: "bg-violet-400/10" },
-    { label: "Repos connected",    value: String(stats.connectedRepos),   sub: "active",                          icon: Github,         color: "text-cyan-400",  bg: "bg-cyan-400/10"   },
-  ] : [];
+  const usageLabel =
+    stats?.usageLimit === -1
+      ? `${stats.usageThisMonth} reviews used this month`
+      : `${stats?.usageThisMonth ?? 0}/${stats?.usageLimit ?? 10} reviews used this month`;
+
+  const STATS_CARDS = stats
+    ? [
+        {
+          label: "Reviews this month",
+          value: String(stats.usageThisMonth),
+          sub:
+            stats.usageLimit === -1
+              ? "unlimited plan"
+              : `of ${stats.usageLimit} free`,
+          icon: GitPullRequest,
+          color: "text-green-400",
+          bg: "bg-green-400/10",
+        },
+        {
+          label: "Issues detected",
+          value: String(stats.totalIssues),
+          sub: `${stats.securityIssues} security`,
+          icon: AlertTriangle,
+          color: "text-amber-400",
+          bg: "bg-amber-400/10",
+        },
+        {
+          label: "Clean PRs",
+          value: `${stats.cleanRate}%`,
+          sub: "pass rate",
+          icon: CheckCircle2,
+          color: "text-violet-400",
+          bg: "bg-violet-400/10",
+        },
+        {
+          label: "Repos connected",
+          value: String(stats.connectedRepos),
+          sub: "active",
+          icon: Github,
+          color: "text-cyan-400",
+          bg: "bg-cyan-400/10",
+        },
+      ]
+    : [];
 
   return (
     <div className="min-h-screen bg-black">
@@ -307,8 +389,19 @@ export default function DashboardPage() {
                 Your Dashboard
               </h1>
               <p className="text-white/40 text-[14px] mt-1.5">
-                {stats ? `${stats.plan} plan · ${stats.usageThisMonth}/${stats.usageLimit} reviews used this month` : "Loading…"}
+                {stats
+                  ? `${stats.plan} plan · ${usageLabel}`
+                  : "Loading…"}
               </p>
+              {inProgress && (
+                <p className="text-[12px] text-cyan-400/80 mt-1.5 flex items-center gap-1.5">
+                  <span className="relative flex h-2 w-2">
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-cyan-400/60 opacity-75" />
+                    <span className="relative inline-flex h-2 w-2 rounded-full bg-cyan-400" />
+                  </span>
+                  Review in progress — updating every few seconds
+                </p>
+              )}
             </div>
             <ConnectRepoDropdown onConnected={() => setRefreshKey((k) => k + 1)} />
           </div>
@@ -320,7 +413,9 @@ export default function DashboardPage() {
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-[12px] text-white/40 font-medium">Monthly usage</span>
                   <span className="text-[12px] font-semibold text-white">
-                    {stats.usageThisMonth} / {stats.usageLimit}
+                    {stats.usageLimit === -1
+                      ? stats.usageThisMonth
+                      : `${stats.usageThisMonth} / ${stats.usageLimit}`}
                   </span>
                 </div>
                 <div className="h-1.5 rounded-full bg-white/6 overflow-hidden">
@@ -367,12 +462,31 @@ export default function DashboardPage() {
               <div className="w-3 h-3 rounded-full bg-amber-500/60" />
               <div className="w-3 h-3 rounded-full bg-green-500/60" />
             </div>
-            <div className="flex-1 text-center font-mono text-[11px] text-white/25">PRReview.ai Dashboard</div>
+            <div className="flex-1 text-center font-mono text-[11px] text-white/25">
+              PRReview.ai Dashboard
+              {lastUpdated && (
+                <span className="hidden sm:inline text-white/15">
+                  {" "}
+                  · updated{" "}
+                  {lastUpdated.toLocaleTimeString([], {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })}
+                </span>
+              )}
+            </div>
             <button
               onClick={() => setRefreshKey((k) => k + 1)}
-              className="hidden sm:flex items-center gap-1 text-[11px] text-white/20 hover:text-white/50 transition-colors"
+              disabled={loading || refreshing}
+              className="flex items-center gap-1 text-[11px] text-white/20 hover:text-white/50 transition-colors disabled:opacity-40"
             >
-              <RefreshCw className={cn("h-3 w-3", loading && "animate-spin")} /> Refresh
+              <RefreshCw
+                className={cn(
+                  "h-3 w-3",
+                  (loading || refreshing) && "animate-spin",
+                )}
+              />{" "}
+              Refresh
             </button>
           </div>
 

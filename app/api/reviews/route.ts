@@ -1,7 +1,8 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { auth } from "@/lib/auth";
 import { headers } from "next/headers";
 import { prisma } from "@/lib/prisma";
+import { privateJson } from "@/lib/api-response";
 
 // GET /api/reviews
 // Optional query params:
@@ -15,7 +16,7 @@ export async function GET(req: NextRequest) {
   try {
     const session = await auth.api.getSession({ headers: await headers() });
     if (!session) {
-      return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+      return privateJson({ error: "Not authenticated" }, 401);
     }
 
     const { searchParams } = new URL(req.url);
@@ -64,12 +65,9 @@ export async function GET(req: NextRequest) {
       },
     }));
 
-    return NextResponse.json({ reviews: shaped });
+    return privateJson({ reviews: shaped });
   } catch (error) {
     console.error("[/api/reviews GET]", error);
-    return NextResponse.json(
-      { error: "Failed to fetch reviews" },
-      { status: 500 }
-    );
+    return privateJson({ error: "Failed to fetch reviews" }, 500);
   }
 }
