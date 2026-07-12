@@ -38,11 +38,8 @@ export const metadata: Metadata = {
     description: "AI code reviews on every pull request.",
   },
   robots: { index: true, follow: true },
-  icons: {
-    icon: [{ url: "/pr_review.png", type: "image/png" }],
-    apple: [{ url: "/pr_review.png", type: "image/png" }],
-    shortcut: ["/pr_review.png"],
-  },
+  // Favicon comes from app/icon.png (App Router file convention).
+  // That overrides metadata.icons — keep the file in /app, not only /public.
 };
 
 export const viewport: Viewport = {
